@@ -1,0 +1,67 @@
+name: CI-CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/baloghszilveszter/cubix/1/homework/app:springboot
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build app
+        run: ./mvnw package
+
+      - name: Upload application jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-jar
+          path: target/*.jar
+
+  docker:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Download application jar
+        uses: actions/download-artifact@v4
+        with:
+          name: application-jar
+          path: .
+
+      - name: Build image
+        run: docker build -t ${{ env.IMAGE_NAME }} .
+
+      - name: Push image
+        run: docker push ${{ env.IMAGE_NAME }}
+
+  verify:
+    needs: docker
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify image
+        run: chmod +x verify-image.sh && ./verify-image.sh
